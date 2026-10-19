@@ -163,3 +163,10 @@ cython_debug/
 
 docs/build/
 efinance/data
+
+# Generated acceptance reports and browser screenshots (kept locally)
+/docs/*-results.json
+/docs/images/query-*.png
+/docs/webkit-validation/
+/full-online-results.json
+/online-results.txt

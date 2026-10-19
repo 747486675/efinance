@@ -10,3 +10,8 @@ build
 .idea
 efinance/data
 docs/build
+docs/*-results.json
+docs/images/query-*.png
+docs/webkit-validation
+full-online-results.json
+online-results.txt
