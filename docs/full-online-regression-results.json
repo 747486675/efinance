@@ -1,0 +1,311 @@
+{
+  "checked_at": "2026-10-19T10:39:09.368727+08:00",
+  "config": {
+    "connect_timeout": 5.0,
+    "read_timeout": 10.0,
+    "max_attempts": 1,
+    "max_concurrency": 8,
+    "requests_per_second": 2,
+    "validation": "warn"
+  },
+  "checks": [
+    {
+      "name": "索引可构建",
+      "status": "PASS",
+      "rows": 15035
+    },
+    {
+      "name": "按代码 600519",
+      "status": "PASS",
+      "detail": "'1.600519'"
+    },
+    {
+      "name": "按名称 贵州茅台",
+      "status": "PASS",
+      "detail": "'1.600519'"
+    },
+    {
+      "name": "带空格名称 '万  科Ａ' 可解析",
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "name": "同名标的取A股 宁德时代",
+      "status": "PASS",
+      "detail": "'0.300750'"
+    },
+    {
+      "name": "完整行情ID直接放行 105.AAPL",
+      "status": "PASS",
+      "detail": "'105.AAPL'"
+    },
+    {
+      "name": "同代码多候选 2 项",
+      "status": "SKIP",
+      "reason": "索引无重复代码，需一次完整重建才会生成多候选"
+    },
+    {
+      "name": "get_quote_history 单只",
+      "status": "PASS",
+      "rows": 242
+    },
+    {
+      "name": "get_quote_history 按名称",
+      "status": "PASS",
+      "rows": 98
+    },
+    {
+      "name": "get_quote_history 多只",
+      "status": "PASS",
+      "rows": 2
+    },
+    {
+      "name": "get_latest_quote",
+      "status": "FAIL",
+      "detail": "NetworkError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/ulist.np/get?OSVersion=14.3&appVersion=6.3.8&fields=f12%2Cf14%2Cf3%2Cf2%2Cf15%2Cf16%2Cf17%2Cf4%2Cf8%2Cf10%2Cf9%2Cf5%2Cf6%2Cf18%2Cf20%2Cf21%2Cf13%2Cf124%2Cf297&fltt=2&plat=Iphone&product=EFund&secids=1.600519%2C0.300750&serverVersion=6.3.6&version=6.3.8 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "get_base_info",
+      "status": "PASS",
+      "rows": 12
+    },
+    {
+      "name": "get_belong_board",
+      "status": "PASS",
+      "rows": 31
+    },
+    {
+      "name": "get_history_bill",
+      "status": "PASS",
+      "rows": 120
+    },
+    {
+      "name": "get_members 沪深300",
+      "status": "PASS",
+      "rows": 300
+    },
+    {
+      "name": "get_quote_snapshot",
+      "status": "PASS",
+      "rows": 37
+    },
+    {
+      "name": "get_today_bill",
+      "status": "PASS",
+      "rows": 69
+    },
+    {
+      "name": "get_deal_detail",
+      "status": "FAIL",
+      "detail": "NetworkError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-30 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "get_top10_stock_holder_info",
+      "status": "PASS",
+      "rows": 32
+    },
+    {
+      "name": "get_latest_ipo_info",
+      "status": "PASS",
+      "rows": 3366
+    },
+    {
+      "name": "get_latest_holder_number",
+      "status": "PASS",
+      "rows": 5573
+    },
+    {
+      "name": "get_daily_billboard",
+      "status": "PASS",
+      "rows": 66
+    },
+    {
+      "name": "get_all_report_dates",
+      "status": "PASS",
+      "rows": 40
+    },
+    {
+      "name": "get_all_company_performance",
+      "status": "PASS",
+      "rows": 51
+    },
+    {
+      "name": "bond.get_realtime_quotes",
+      "status": "PASS",
+      "rows": 322
+    },
+    {
+      "name": "bond.get_quote_history 123286",
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "name": "bond.get_base_info 123286",
+      "status": "PASS",
+      "rows": 12
+    },
+    {
+      "name": "bond.get_today_bill 123286",
+      "status": "FAIL",
+      "detail": "返回 0 行，期望 >= 1",
+      "error_type": null
+    },
+    {
+      "name": "bond.get_history_bill 123286",
+      "status": "FAIL",
+      "detail": "返回 0 行，期望 >= 1",
+      "error_type": null
+    },
+    {
+      "name": "bond.get_deal_detail 123286",
+      "status": "FAIL",
+      "detail": "NetworkError: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=0.123286&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-30 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "futures.get_realtime_quotes",
+      "status": "FAIL",
+      "detail": "NetworkError: Upstream HTTP 503",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "futures 个股接口 2 项",
+      "status": "SKIP",
+      "reason": "futures.get_realtime_quotes 未取得样本"
+    },
+    {
+      "name": "fund.get_fund_codes",
+      "status": "PASS",
+      "rows": 26379
+    },
+    {
+      "name": "fund.get_quote_history 006401",
+      "status": "PASS",
+      "rows": 1805
+    },
+    {
+      "name": "fund.get_base_info 006401",
+      "status": "PASS",
+      "rows": 8
+    },
+    {
+      "name": "fund.get_quote_history_multi 006401",
+      "status": "PASS",
+      "rows": 2
+    },
+    {
+      "name": "fund.get_realtime_increase_rate 006401",
+      "status": "PASS",
+      "rows": 2
+    },
+    {
+      "name": "fund.get_invest_position 006401",
+      "status": "PASS",
+      "rows": 10
+    },
+    {
+      "name": "fund.get_industry_distribution 006401",
+      "status": "PASS",
+      "rows": 20
+    },
+    {
+      "name": "fund.get_types_percentage 006401",
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "name": "fund.get_period_change 006401",
+      "status": "PASS",
+      "rows": 10
+    },
+    {
+      "name": "fund.get_public_dates 006401",
+      "status": "PASS",
+      "rows": 28
+    },
+    {
+      "name": "fund.get_fund_manager 006401",
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "name": "stock.get_realtime_quotes",
+      "status": "FAIL",
+      "detail": "NetworkError: Upstream HTTP 503",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "futures.get_futures_base_info",
+      "status": "FAIL",
+      "detail": "NetworkError: Upstream HTTP 503",
+      "error_type": "NetworkError"
+    },
+    {
+      "name": "bond.get_all_base_info",
+      "status": "PASS",
+      "rows": 1063
+    },
+    {
+      "name": "suppress_error=True 时无匹配结果返回空串（离线）",
+      "status": "PASS",
+      "detail": "''"
+    },
+    {
+      "name": "8 线程并发只抓取一轮分组（实际 7 次）",
+      "status": "PASS",
+      "detail": "1"
+    },
+    {
+      "name": "旧版缓存可迁移读取",
+      "status": "PASS",
+      "detail": "True"
+    },
+    {
+      "name": "迁移后值为候选列表",
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "name": "迁移后解析结果不变",
+      "status": "PASS",
+      "detail": "'1.600519'"
+    },
+    {
+      "name": "部分失败时本进程仍可解析",
+      "status": "PASS",
+      "detail": "'1.600519'"
+    },
+    {
+      "name": "部分失败时不写磁盘缓存",
+      "status": "PASS",
+      "detail": "False"
+    },
+    {
+      "name": "重建失败时退回过期索引",
+      "status": "PASS",
+      "detail": "[{'q': '1.600519', 'n': '贵州茅台', 't': '', 'c': 'AStock'}]"
+    },
+    {
+      "name": "退回过期索引时给出 RuntimeWarning",
+      "status": "PASS",
+      "detail": "True"
+    },
+    {
+      "name": "过期兜底后仍可解析",
+      "status": "PASS",
+      "detail": "'1.600519'"
+    },
+    {
+      "name": "无缓存可退时仍然抛错",
+      "status": "PASS",
+      "detail": "True"
+    }
+  ],
+  "summary": {
+    "passed": 47,
+    "failed": 8,
+    "skipped": 2
+  }
+}

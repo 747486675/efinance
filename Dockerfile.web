@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir '.[web]'
+RUN useradd --create-home efinance \
+    && python -c "import pathlib, shutil, sysconfig; cache = pathlib.Path(sysconfig.get_paths()['purelib']) / 'efinance' / 'data'; cache.mkdir(parents=True, exist_ok=True); shutil.chown(cache, user='efinance', group='efinance')" \
+    && chown -R efinance:efinance /app
+USER efinance
+EXPOSE 8000
+CMD ["efinance", "web", "--host", "0.0.0.0", "--port", "8000"]

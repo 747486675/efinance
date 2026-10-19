@@ -1,0 +1,12 @@
+.git
+.env
+.venv*
+.validation-runtimes
+*.log
+__pycache__
+*.egg-info
+dist
+build
+.idea
+efinance/data
+docs/build

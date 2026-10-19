@@ -1,0 +1,65 @@
+{
+  "checked_at": "2026-10-19T11:17:10.238334+08:00",
+  "checks": [
+    {
+      "name": "futures.market_protocol",
+      "scheme": "http",
+      "trust_env": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "http_status": 503,
+      "content_type": null,
+      "body_sample": ""
+    },
+    {
+      "name": "futures.market_protocol",
+      "scheme": "https",
+      "trust_env": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/clist/get?pn=1&pz=2&po=1&np=1&fltt=2&invt=2&fid=f12&fs=m%3A113%2Cm%3A114%2Cm%3A115%2Cm%3A8%2Cm%3A142%2Cm%3A225&fields=f12%2Cf14%2Cf13 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    },
+    {
+      "name": "futures.market_protocol",
+      "scheme": "http",
+      "trust_env": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+      "name": "futures.market_protocol",
+      "scheme": "https",
+      "trust_env": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+      "name": "stock.deals.direct",
+      "trust_env": false,
+      "code": "1.600519",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+      "name": "futures.deals.direct",
+      "trust_env": false,
+      "code": "113.rbm",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    },
+    {
+      "name": "bond.deals.direct",
+      "trust_env": false,
+      "code": "0.128142",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))"
+    }
+  ],
+  "note": "Same existing source and parameters; diagnostic only; no production endpoint changes"
+}

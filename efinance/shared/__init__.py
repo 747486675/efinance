@@ -9,7 +9,7 @@ from ..config import SEARCH_RESULT_CACHE_PATH, MAX_CONNECTIONS
 from .tickflow_prompt import session
 
 adapter = requests.adapters.HTTPAdapter(
-    pool_connections=MAX_CONNECTIONS, pool_maxsize=MAX_CONNECTIONS, max_retries=5
+    pool_connections=MAX_CONNECTIONS, pool_maxsize=MAX_CONNECTIONS, max_retries=0
 )
 session.mount("http://", adapter)
 session.mount("https://", adapter)

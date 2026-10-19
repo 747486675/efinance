@@ -1,0 +1,175 @@
+{
+  "checked_at": "2026-10-19T14:38:02.833615+08:00",
+  "rounds": 2,
+  "config": {
+    "connect_timeout": 5,
+    "read_timeout": 10,
+    "max_attempts": 2,
+    "max_concurrency": 2,
+    "requests_per_second": 1,
+    "validation": "warn"
+  },
+  "checks": [
+    {
+      "name": "stock.latest",
+      "round": 1,
+      "code": "1.600519",
+      "status": "PASS",
+      "rows": 1,
+      "columns": [
+        "代码",
+        "名称",
+        "涨跌幅",
+        "最新价",
+        "最高",
+        "最低",
+        "今开",
+        "涨跌额",
+        "换手率",
+        "量比",
+        "动态市盈率",
+        "成交量",
+        "成交额",
+        "昨日收盘",
+        "总市值",
+        "流通市值",
+        "市场类型",
+        "行情ID",
+        "更新时间",
+        "最新交易日"
+      ],
+      "elapsed_seconds": 0.484
+    },
+    {
+      "name": "stock.deals",
+      "round": 1,
+      "code": "1.600519",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-30 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "attempts": 2,
+      "elapsed_seconds": 5.344
+    },
+    {
+      "name": "bond.deals",
+      "round": 1,
+      "code": "0.128142",
+      "status": "PASS",
+      "rows": 30,
+      "columns": [
+        "债券名称",
+        "债券代码",
+        "时间",
+        "昨收",
+        "成交价",
+        "成交量",
+        "单数"
+      ],
+      "elapsed_seconds": 4.234
+    },
+    {
+      "name": "futures.deals",
+      "round": 1,
+      "code": "113.rbm",
+      "status": "PASS",
+      "rows": 30,
+      "columns": [
+        "期货名称",
+        "期货代码",
+        "时间",
+        "昨收",
+        "成交价",
+        "成交量",
+        "单数"
+      ],
+      "elapsed_seconds": 1.594
+    },
+    {
+      "name": "stock.latest",
+      "round": 2,
+      "code": "1.600519",
+      "status": "PASS",
+      "rows": 1,
+      "columns": [
+        "代码",
+        "名称",
+        "涨跌幅",
+        "最新价",
+        "最高",
+        "最低",
+        "今开",
+        "涨跌额",
+        "换手率",
+        "量比",
+        "动态市盈率",
+        "成交量",
+        "成交额",
+        "昨日收盘",
+        "总市值",
+        "流通市值",
+        "市场类型",
+        "行情ID",
+        "更新时间",
+        "最新交易日"
+      ],
+      "elapsed_seconds": 1.016
+    },
+    {
+      "name": "stock.deals",
+      "round": 2,
+      "code": "1.600519",
+      "status": "PASS",
+      "rows": 30,
+      "columns": [
+        "股票名称",
+        "股票代码",
+        "时间",
+        "昨收",
+        "成交价",
+        "成交量",
+        "单数"
+      ],
+      "elapsed_seconds": 0.984
+    },
+    {
+      "name": "bond.deals",
+      "round": 2,
+      "code": "0.128142",
+      "status": "PASS",
+      "rows": 30,
+      "columns": [
+        "债券名称",
+        "债券代码",
+        "时间",
+        "昨收",
+        "成交价",
+        "成交量",
+        "单数"
+      ],
+      "elapsed_seconds": 1.0
+    },
+    {
+      "name": "futures.deals",
+      "round": 2,
+      "code": "113.rbm",
+      "status": "PASS",
+      "rows": 30,
+      "columns": [
+        "期货名称",
+        "期货代码",
+        "时间",
+        "昨收",
+        "成交价",
+        "成交量",
+        "单数"
+      ],
+      "elapsed_seconds": 1.016
+    }
+  ],
+  "summary": {
+    "PASS": 7,
+    "FAIL": 1,
+    "EMPTY": 0
+  },
+  "all_rounds_passed": false
+}

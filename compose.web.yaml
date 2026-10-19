@@ -1,0 +1,11 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      EFINANCE_WEB_USERNAME: ${EFINANCE_WEB_USERNAME:?Set EFINANCE_WEB_USERNAME}
+      EFINANCE_WEB_PASSWORD: ${EFINANCE_WEB_PASSWORD:?Set EFINANCE_WEB_PASSWORD}
+    restart: unless-stopped

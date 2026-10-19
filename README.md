@@ -1,5 +1,16 @@
 ## Introduction
 
+### 0.6.0 本地升级
+
+新增统一请求配置、限流与异常分类、可追踪的批量查询、CLI、文件导出及可选网页查询服务。核心库保留 Python 3.6 兼容；网页使用 Python 3.12。
+
+```bash
+pip install -e '.[web]'
+python -m efinance web
+```
+
+打开 `http://127.0.0.1:8000`。基础安装无需网页依赖。参见 [升级指南](docs/upgrade-guide.md)、[服务器部署准备](docs/web-deployment.md)、[执行文档](docs/upgrade-execution-plan.md)和[验证记录](docs/upgrade-validation.md)。本次升级不引入数据库，现有 JSON 缓存机制保持原状。
+
 [![Python Version](https://img.shields.io/badge/python-3.6+-blue.svg?style=flat)](https://pypi.python.org/pypi/efinance)
 [![Pypi Package](https://img.shields.io/pypi/v/efinance.svg?maxAge=60)](https://pypi.python.org/pypi/efinance)
 [![Pypi-Install](https://img.shields.io/pypi/dm/efinance.svg?maxAge=2592000&label=installs&color=%2327B1FF)](https://pypi.python.org/pypi/efinance)

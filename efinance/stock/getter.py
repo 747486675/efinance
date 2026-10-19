@@ -1,19 +1,20 @@
+from ..validation import response_guard, response_parsing
 import calendar
 import json
-import signal
 import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Union
 from concurrent.futures import ThreadPoolExecutor
+from ..settings import get_config
+from ..transport import inherit_attempts
+from ..exceptions import ParameterError, ResponseError
 
-import threading
-import multitasking
 import numpy as np
 import pandas as pd
 import requests
 import rich
 from jsonpath import jsonpath
-from retry import retry
+
 from tqdm.auto import tqdm
 
 from ..common import get_base_info as get_base_info_for_stock
@@ -37,8 +38,6 @@ from .config import (
     EASTMONEY_STOCK_DAILY_BILL_BOARD_FIELDS,
 )
 
-if threading.current_thread() is threading.main_thread():
-    signal.signal(signal.SIGINT, multitasking.killall)
 
 python_version = sys.version_info.major, sys.version_info.minor
 # * 适配 pythn 3.10 及其以上版本
@@ -48,6 +47,7 @@ if python_version >= (3, 10):
 requests.packages.urllib3.disable_warnings()
 
 
+@response_guard
 @to_numeric
 def get_base_info_single(stock_code: str) -> pd.Series:
     """
@@ -74,39 +74,15 @@ def get_base_info_single(stock_code: str) -> pd.Series:
     )
 
 
+@response_guard
 def get_base_info_muliti(stock_codes: List[str]) -> pd.DataFrame:
-    """
-    获取股票多只基本信息
-
-    Parameters
-    ----------
-    stock_codes : List[str]
-        股票代码列表
-
-    Returns
-    -------
-    DataFrame
-        多只股票基本信息
-    """
-
-    @multitasking.task
-    @retry(tries=3, delay=1)
-    def start(stock_code: str):
-        s = get_base_info_single(stock_code)
-        series.append(s)
-        pbar.update()
-        pbar.set_description(f"Processing => {stock_code}")
-
-    series: List[pd.Series] = []
-    pbar = tqdm(total=len(stock_codes))
-    for stock_code in stock_codes:
-        start(stock_code)
-    multitasking.wait_for_tasks()
-    df = pd.DataFrame(series)
-    df = df.dropna(subset=["股票代码"])
-    return df
+    from ..batch import legacy_fetch
+    rows = legacy_fetch(get_base_info_single, stock_codes)
+    df = pd.DataFrame(list(rows.values()))
+    return df.dropna(subset=["股票代码"]) if not df.empty else df
 
 
+@response_guard
 @to_numeric
 def get_base_info(stock_codes: Union[str, List[str]]) -> Union[pd.Series, pd.DataFrame]:
     """
@@ -159,9 +135,10 @@ def get_base_info(stock_codes: Union[str, List[str]]) -> Union[pd.Series, pd.Dat
     elif hasattr(stock_codes, "__iter__"):
         return get_base_info_muliti(stock_codes)
 
-    raise TypeError(f"所给的 {stock_codes} 不符合参数要求")
+    raise ParameterError(f"所给的 {stock_codes} 不符合参数要求")
 
 
+@response_guard
 def get_quote_history(
     stock_codes: Union[str, List[str]],
     beg: str = "19000101",
@@ -317,6 +294,7 @@ def get_quote_history(
     return df
 
 
+@response_guard
 @process_dataframe_and_series(remove_columns_and_indexes=["市场编号"])
 @to_numeric
 def get_realtime_quotes(fs: Union[str, List[str]] = None, **kwargs) -> pd.DataFrame:
@@ -436,6 +414,7 @@ def get_realtime_quotes(fs: Union[str, List[str]] = None, **kwargs) -> pd.DataFr
     return df
 
 
+@response_guard
 @to_numeric
 def get_history_bill(stock_code: str) -> pd.DataFrame:
     """
@@ -474,6 +453,7 @@ def get_history_bill(stock_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 @to_numeric
 def get_today_bill(stock_code: str) -> pd.DataFrame:
     """
@@ -512,6 +492,7 @@ def get_today_bill(stock_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_latest_quote(stock_codes: Union[str, List[str]], **kwargs) -> pd.DataFrame:
     """
     获取沪深市场多只股票的实时涨幅情况
@@ -545,6 +526,8 @@ def get_latest_quote(stock_codes: Union[str, List[str]], **kwargs) -> pd.DataFra
     """
     if isinstance(stock_codes, str):
         stock_codes = [stock_codes]
+    elif not hasattr(stock_codes, "__iter__"):
+        raise ParameterError("stock_codes must be a code or an iterable of codes")
     if kwargs.get(MagicConfig.QUOTE_ID_MODE):
         secids = stock_codes
     else:
@@ -554,6 +537,7 @@ def get_latest_quote(stock_codes: Union[str, List[str]], **kwargs) -> pd.DataFra
     return df
 
 
+@response_guard
 @to_numeric
 def get_top10_stock_holder_info(stock_code: str, top: int = 4) -> pd.DataFrame:
     """
@@ -629,7 +613,7 @@ def get_top10_stock_holder_info(stock_code: str, top: int = 4) -> pd.DataFrame:
         fc = gen_fc(stock_code)
         data = {"fc": fc}
         url = "https://emh5.eastmoney.com/api/GuBenGuDong/GetFirstRequest2Data"
-        json_response = requests.post(url, json=data).json()
+        json_response = session.post(url, json=data).json()
         dates = jsonpath(json_response, f"$..BaoGaoQi")
         if not dates:
             return []
@@ -653,7 +637,7 @@ def get_top10_stock_holder_info(stock_code: str, top: int = 4) -> pd.DataFrame:
     for date in dates[:top]:
         data = {"fc": fc, "BaoGaoQi": date}
         url = "https://emh5.eastmoney.com/api/GuBenGuDong/GetShiDaLiuTongGuDong"
-        response = requests.post(url, json=data)
+        response = session.post(url, json=data)
         response.encoding = "utf-8"
         items: List[dict] = jsonpath(response.json(), f"$..ShiDaLiuTongGuDongList[:]")
         if not items:
@@ -669,6 +653,7 @@ def get_top10_stock_holder_info(stock_code: str, top: int = 4) -> pd.DataFrame:
     return pd.concat(dfs, axis=0, ignore_index=True)
 
 
+@response_guard
 def get_all_report_dates() -> pd.DataFrame:
     """
     获取沪深市场的全部股票报告期信息
@@ -732,7 +717,7 @@ def get_all_report_dates() -> pd.DataFrame:
         ("ps", "2000"),
     )
     url = "https://datacenter.eastmoney.com/securities/api/data/get"
-    response = requests.get(url, headers=EASTMONEY_REQUEST_HEADERS, params=params)
+    response = session.get(url, headers=EASTMONEY_REQUEST_HEADERS, params=params)
     items = jsonpath(response.json(), "$..data[:]")
     if not items:
         pd.DataFrame(columns=fields.values())
@@ -742,6 +727,7 @@ def get_all_report_dates() -> pd.DataFrame:
     return df
 
 
+@response_guard
 @to_numeric
 def get_all_company_performance(date: str = None) -> pd.DataFrame:
     """
@@ -853,8 +839,8 @@ def get_all_company_performance(date: str = None) -> pd.DataFrame:
     div, mod = divmod(total, pz)
     pages = div + 1 if mod else div
 
-    with ThreadPoolExecutor() as executor:
-        tasks = executor.map(get_by_page, range(1, pages + 1), [pz] * pages)
+    with ThreadPoolExecutor(max_workers=get_config()["max_concurrency"]) as executor:
+        tasks = executor.map(inherit_attempts(get_by_page), range(1, pages + 1), [pz] * pages)
         responses = list(tasks)
 
     dfs = [pd.DataFrame(jsonpath(response, "$..data[:]")) for response in responses]
@@ -867,6 +853,7 @@ def get_all_company_performance(date: str = None) -> pd.DataFrame:
     return df
 
 
+@response_guard
 @to_numeric
 def get_latest_holder_number(date: str = None) -> pd.DataFrame:
     """
@@ -987,8 +974,8 @@ def get_latest_holder_number(date: str = None) -> pd.DataFrame:
     if total == 0:
         return pd.DataFrame(columns=fields.values())
 
-    with ThreadPoolExecutor() as executor:
-        tasks = executor.map(get_by_page, range(1, pages + 1), [pz] * pages)
+    with ThreadPoolExecutor(max_workers=get_config()["max_concurrency"]) as executor:
+        tasks = executor.map(inherit_attempts(get_by_page), range(1, pages + 1), [pz] * pages)
         responses = list(tasks)
 
     dfs = [pd.DataFrame(jsonpath(response, "$..data[:]")) for response in responses]
@@ -996,8 +983,8 @@ def get_latest_holder_number(date: str = None) -> pd.DataFrame:
     return df
 
 
+@response_guard
 @to_numeric
-@retry(tries=3)
 def get_daily_billboard(start_date: str = None, end_date: str = None) -> pd.DataFrame:
     """
     获取指定日期区间的龙虎榜详情数据
@@ -1130,6 +1117,7 @@ def get_daily_billboard(start_date: str = None, end_date: str = None) -> pd.Data
     return df
 
 
+@response_guard
 def get_members(index_code: str) -> pd.DataFrame:
     """
     获取指数成分股信息
@@ -1205,7 +1193,7 @@ def get_members(index_code: str) -> pd.DataFrame:
                 ("ServerVersion", "6.9.9"),
             )
             url = "https://fundztapi.eastmoney.com/FundSpecialApiNew/FundSpecialZSB30ZSCFG"
-            json_response = requests.get(
+            json_response = session.get(
                 url, params=params, headers=EASTMONEY_REQUEST_HEADERS
             ).json()
             items = json_response["Datas"]
@@ -1220,6 +1208,7 @@ def get_members(index_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_latest_ipo_info() -> pd.DataFrame:
     """
     获取企业 IPO 审核状态
@@ -1277,7 +1266,7 @@ def get_latest_ipo_info() -> pd.DataFrame:
             ("client", "WEB"),
         )
         url = "http://datacenter-web.eastmoney.com/api/data/get"
-        json_response = requests.get(
+        json_response = session.get(
             url, headers=EASTMONEY_REQUEST_HEADERS, params=params
         ).json()
         items = jsonpath(json_response, "$..data[:]")
@@ -1292,7 +1281,7 @@ def get_latest_ipo_info() -> pd.DataFrame:
     return df
 
 
-@retry(tries=3)
+@response_guard
 def get_quote_snapshot(stock_code: str) -> pd.Series:
     """
     获取沪深市场股票最新行情快照
@@ -1355,11 +1344,9 @@ def get_quote_snapshot(stock_code: str) -> pd.Series:
         ("callback", "jQuery183026310160411569883_1646052793441"),
     )
 
-    response = requests.get(
+    response = session.get(
         "https://hsmarketwg.eastmoney.com/api/SHSZQuoteSnapshot", params=params
     )
-    start_index = response.text.find("{")
-    end_index = response.text.rfind("}")
     columns = {
         "code": "代码",
         "name": "名称",
@@ -1400,14 +1387,24 @@ def get_quote_snapshot(stock_code: str) -> pd.Series:
         "buy5_count": "买5数量",
     }
     s = pd.Series(index=columns.values(), dtype="object")
-    try:
-        qd: dict = json.loads(response.text[start_index : end_index + 1])
-    except:
-        return s
-    if not qd.get("fivequote"):
-        return s
-    d = {**qd.pop("fivequote"), **qd.pop("realtimequote"), **qd}
-    s = pd.Series(d).rename(index=columns)[columns.values()]
+    with response_parsing("get_quote_snapshot"):
+        text = response.text.strip()
+        callback = dict(params)["callback"]
+        if text.startswith(callback + "("):
+            text = text[len(callback) + 1:].rstrip(";").rstrip()
+            if not text.endswith(")"):
+                raise ResponseError("get_quote_snapshot: invalid JSONP envelope")
+            text = text[:-1]
+        qd = json.loads(text)
+        if not isinstance(qd, dict) or not all(key in qd for key in ("fivequote", "realtimequote")):
+            raise ResponseError("get_quote_snapshot: missing quote structure")
+        five, realtime = qd["fivequote"], qd["realtimequote"]
+        if five in (None, {}) and realtime in (None, {}):
+            return s
+        if not isinstance(five, dict) or not isinstance(realtime, dict) or not five or not realtime:
+            raise ResponseError("get_quote_snapshot: invalid quote structure")
+        d = {**qd.pop("fivequote"), **qd.pop("realtimequote"), **qd}
+        s = pd.Series(d, dtype="object").rename(index=columns)[list(columns.values())]
     str_type_list = ["代码", "名称", "时间"]
     all_type_list = columns.values()
     for column in set(all_type_list) - set(str_type_list):
@@ -1416,6 +1413,7 @@ def get_quote_snapshot(stock_code: str) -> pd.Series:
     return s
 
 
+@response_guard
 def get_deal_detail(
     stock_code: str, max_count: int = 1000000, **kwargs
 ) -> pd.DataFrame:
@@ -1465,6 +1463,7 @@ def get_deal_detail(
     return df
 
 
+@response_guard
 def get_belong_board(stock_code: str) -> pd.DataFrame:
     """
     获取股票所属板块

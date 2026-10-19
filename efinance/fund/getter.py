@@ -1,34 +1,40 @@
+from ..validation import response_guard, response_parsing
+from ..exceptions import ParameterError, ResponseError
+import json
 import os
 import re
-import signal
 from typing import List, Union, Dict
 
-import threading
 from bs4 import BeautifulSoup
-import multitasking
 import pandas as pd
-import requests
 import rich
 from jsonpath import jsonpath
-from retry import retry
+
 from tqdm.auto import tqdm
-import time
 
 from ..utils import to_numeric
 from .config import EastmoneyFundHeaders
 from ..common.config import MagicConfig
-from ..shared import session, MAX_CONNECTIONS
+from ..shared import session
 import warnings
 
 warnings.filterwarnings("module")
 
-if threading.current_thread() is threading.main_thread():
-    signal.signal(signal.SIGINT, multitasking.killall)
 
 fund_session = session
 
 
-@retry(tries=3)
+def _fund_records(payload):
+    """An empty record list is valid; a missing or mistyped envelope is not."""
+    if not isinstance(payload, dict) or "Datas" not in payload:
+        raise ResponseError("Missing fund data envelope")
+    rows = payload["Datas"]
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ResponseError("Fund Datas must be a list of records")
+    return rows
+
+
+@response_guard
 @to_numeric
 def get_quote_history(fund_code: str, pz: int = 40000) -> pd.DataFrame:
     """
@@ -65,6 +71,11 @@ def get_quote_history(fund_code: str, pz: int = 40000) -> pd.DataFrame:
 
     """
 
+    from ..exceptions import ParameterError
+    if not isinstance(fund_code, str) or len(fund_code) != 6 or not fund_code.isdigit():
+        raise ParameterError("fund_code must contain six digits")
+    if isinstance(pz, bool) or not isinstance(pz, int) or pz < 1:
+        raise ParameterError("pz must be a positive integer")
     data = {
         "FCODE": f"{fund_code}",
         "IsShareNet": "true",
@@ -86,54 +97,37 @@ def get_quote_history(fund_code: str, pz: int = 40000) -> pd.DataFrame:
     json_response = fund_session.get(
         url, headers=EastmoneyFundHeaders, data=data, verify=False
     ).json()
-    rows = []
-    columns = ["日期", "单位净值", "累计净值", "涨跌幅"]
-    if json_response is None:
-        return pd.DataFrame(rows, columns=columns)
-    datas = json_response["Datas"]
-    if len(datas) == 0:
-        return pd.DataFrame(rows, columns=columns)
-    rows = []
-    for stock in datas:
-        date = stock["FSRQ"]
-        rows.append(
-            {
-                "日期": date,
-                "单位净值": stock["DWJZ"],
-                "累计净值": stock["LJJZ"],
-                "涨跌幅": stock["JZZZL"],
-            }
-        )
-    df = pd.DataFrame(rows)
-    return df
+    with response_parsing("get_quote_history"):
+        rows = []
+        columns = ["日期", "单位净值", "累计净值", "涨跌幅"]
+        datas = _fund_records(json_response)
+        if len(datas) == 0:
+            return pd.DataFrame(rows, columns=columns)
+        rows = []
+        for stock in datas:
+            date = stock["FSRQ"]
+            rows.append(
+                {
+                    "日期": date,
+                    "单位净值": stock["DWJZ"],
+                    "累计净值": stock["LJJZ"],
+                    "涨跌幅": stock["JZZZL"],
+                }
+            )
+        df = pd.DataFrame(rows)
+        return df
 
 
-def get_quote_history_multi(
-    fund_codes: List[str], pz: int = 40000, **kwargs
-) -> Dict[str, pd.DataFrame]:
-    dfs: Dict[str, pd.DataFrame] = {}
-    pbar = tqdm(total=len(fund_codes))
-
-    @multitasking.task
-    @retry(tries=3, delay=1)
-    def start(fund_code: str):
-        if len(multitasking.get_active_tasks()) >= MAX_CONNECTIONS:
-            time.sleep(3)
-        _df = get_quote_history(fund_code, pz)
-        dfs[fund_code] = _df
-        pbar.update(1)
-        pbar.set_description_str(f"Processing => {fund_code}")
-
-    for f in fund_codes:
-        start(f)
-    multitasking.wait_for_tasks()
-    pbar.close()
+@response_guard
+def get_quote_history_multi(fund_codes: List[str], pz: int = 40000, **kwargs) -> Dict[str, pd.DataFrame]:
+    from ..batch import legacy_fetch
+    dfs = legacy_fetch(get_quote_history, fund_codes, kwargs=dict(pz=pz), tries=kwargs.pop("tries", None))
     if kwargs.get(MagicConfig.RETURN_DF):
-        return pd.concat(dfs, axis=0, ignore_index=True)
-    return dfs
+        return pd.concat(dfs, axis=0, ignore_index=True) if dfs else pd.DataFrame()
+    return dict(dfs)
 
 
-@retry(tries=3)
+@response_guard
 @to_numeric
 def get_realtime_increase_rate(fund_codes: Union[List[str], str]) -> pd.DataFrame:
     """
@@ -192,15 +186,14 @@ def get_realtime_increase_rate(fund_codes: Union[List[str], str]) -> pd.DataFram
     json_response = fund_session.get(
         url, headers=EastmoneyFundHeaders, data=data
     ).json()
-    rows = jsonpath(json_response, "$..Datas[:]")
-    if not rows:
-        df = pd.DataFrame(columns=columns.values())
-        return df
-    df = pd.DataFrame(rows).rename(columns=columns)[columns.values()]
-    return df
+    with response_parsing("get_realtime_increase_rate"):
+        rows = _fund_records(json_response)
+        if not rows:
+            return pd.DataFrame(columns=list(columns.values()))
+        return pd.DataFrame(rows).rename(columns=columns)[list(columns.values())]
 
 
-@retry(tries=3)
+@response_guard
 def get_fund_codes(ft: str = None) -> pd.DataFrame:
     """
     获取天天基金网公开的全部公墓基金名单
@@ -273,12 +266,31 @@ def get_fund_codes(ft: str = None) -> pd.DataFrame:
     response = fund_session.get(url, headers=headers, params=params)
 
     columns = ["基金代码", "基金简称"]
-    results = re.findall(r'"(\d{6}),(.*?),', response.text)
+    with response_parsing("get_fund_codes"):
+        text = response.text.strip()
+        if not re.fullmatch(r"(?:var\s+)?rankData\s*=\s*\{.*\}\s*;?", text, re.S):
+            raise ResponseError("get_fund_codes: missing rankData envelope")
+        match = re.search(r'\b(?:datas|"datas")\s*:\s*', text)
+        if match is None:
+            raise ResponseError("get_fund_codes: missing datas")
+        rows, end = json.JSONDecoder().raw_decode(text[match.end():])
+        if not text[match.end() + end:].lstrip().startswith((",", "}")):
+            raise ResponseError("get_fund_codes: invalid datas boundary")
+        if not isinstance(rows, list):
+            raise ResponseError("get_fund_codes: datas must be a list")
+        results = []
+        for row in rows:
+            if not isinstance(row, str):
+                raise ResponseError("get_fund_codes: invalid fund record")
+            fields = row.split(",")
+            if len(fields) < 2 or not re.fullmatch(r"\d{6}", fields[0]):
+                raise ResponseError("get_fund_codes: invalid fund record")
+            results.append(fields[:2])
     df = pd.DataFrame(results, columns=columns)
     return df
 
 
-@retry(tries=3)
+@response_guard
 def get_fund_manager(ft: str) -> pd.DataFrame:
     url = f"http://fundf10.eastmoney.com/jjjl_{ft}.html"
     response = fund_session.get(url)
@@ -316,7 +328,7 @@ def get_fund_manager(ft: str) -> pd.DataFrame:
     )
 
 
-@retry(tries=3)
+@response_guard
 @to_numeric
 def get_invest_position(
     fund_code: str, dates: Union[str, List[str]] = None
@@ -428,7 +440,7 @@ def get_invest_position(
     return df
 
 
-@retry(tries=3)
+@response_guard
 @to_numeric
 def get_period_change(fund_code: str) -> pd.DataFrame:
     """
@@ -505,6 +517,7 @@ def get_period_change(fund_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_public_dates(fund_code: str) -> List[str]:
     """
     获取历史上更新持仓情况的日期列表
@@ -547,7 +560,7 @@ def get_public_dates(fund_code: str) -> List[str]:
     return json_response["Datas"]
 
 
-@retry(tries=3)
+@response_guard
 @to_numeric
 def get_types_percentage(
     fund_code: str, dates: Union[List[str], str, None] = None
@@ -626,7 +639,7 @@ def get_types_percentage(
     return df
 
 
-@retry(tries=3)
+@response_guard
 @to_numeric
 def get_base_info_single(fund_code: str) -> pd.Series:
     """
@@ -675,39 +688,15 @@ def get_base_info_single(fund_code: str) -> pd.Series:
     return s
 
 
-def get_base_info_muliti(fund_codes: List[str]) -> pd.Series:
-    """
-    获取多只基金基本信息
-
-    Parameters
-    ----------
-    fund_codes : List[str]
-        6 位基金代码列表
-
-    Returns
-    -------
-    Series
-        多只基金基本信息
-    """
-
-    ss = []
-
-    @multitasking.task
-    @retry(tries=3, delay=1)
-    def start(fund_code: str) -> None:
-        s = get_base_info_single(fund_code)
-        ss.append(s)
-        pbar.update()
-        pbar.set_description(f"Processing => {fund_code}")
-
-    pbar = tqdm(total=len(fund_codes))
-    for fund_code in fund_codes:
-        start(fund_code)
-    multitasking.wait_for_tasks()
-    df = pd.DataFrame(ss)
+@response_guard
+def get_base_info_muliti(fund_codes: List[str]) -> pd.DataFrame:
+    from ..batch import legacy_fetch
+    rows = legacy_fetch(get_base_info_single, fund_codes)
+    df = pd.DataFrame(list(rows.values()))
     return df
 
 
+@response_guard
 def get_base_info(fund_codes: Union[str, List[str]]) -> Union[pd.Series, pd.DataFrame]:
     """
     获取基金的一些基本信息
@@ -756,9 +745,10 @@ def get_base_info(fund_codes: Union[str, List[str]]) -> Union[pd.Series, pd.Data
         return get_base_info_single(fund_codes)
     elif hasattr(fund_codes, "__iter__"):
         return get_base_info_muliti(fund_codes)
-    raise TypeError(f"所给的 {fund_codes} 不符合参数要求")
+    raise ParameterError(f"所给的 {fund_codes} 不符合参数要求")
 
 
+@response_guard
 @to_numeric
 def get_industry_distribution(
     fund_code: str, dates: Union[str, List[str]] = None
@@ -851,6 +841,7 @@ def get_industry_distribution(
     return df
 
 
+@response_guard
 def get_pdf_reports(fund_code: str, max_count: int = 12, save_dir: str = "pdf") -> None:
     """
     根据基金代码获取其全部 pdf 报告
@@ -872,6 +863,11 @@ def get_pdf_reports(fund_code: str, max_count: int = 12, save_dir: str = "pdf") 
     161725 的 pdf 文件已存储到文件夹 pdf/161725 中
     """
 
+    if isinstance(max_count, bool) or not isinstance(max_count, int) or max_count < 0:
+        raise ParameterError("max_count must be a non-negative integer")
+    if max_count == 0:
+        return
+
     headers = {
         "Connection": "keep-alive",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.128 Safari/537.36 Edg/89.0.774.77",
@@ -880,8 +876,6 @@ def get_pdf_reports(fund_code: str, max_count: int = 12, save_dir: str = "pdf") 
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
     }
 
-    @multitasking.task
-    @retry(tries=3, delay=1)
     def download_file(
         fund_code: str, url: str, filename: str, file_type=".pdf"
     ) -> None:
@@ -902,21 +896,20 @@ def get_pdf_reports(fund_code: str, max_count: int = 12, save_dir: str = "pdf") 
 
         pbar.set_description(f"Processing => {fund_code}")
         fund_code = str(fund_code)
-        if not os.path.exists(save_dir + "/" + fund_code):
-            os.mkdir(save_dir + "/" + fund_code)
+        os.makedirs(save_dir + "/" + fund_code, exist_ok=True)
         response = fund_session.get(url, headers=headers)
+        content = response.content
+        if not content.lstrip().startswith(b"%PDF-"):
+            raise ResponseError("Report download did not return PDF data")
         path = f"{save_dir}/{fund_code}/{filename}{file_type}"
         with open(path, "wb") as f:
-            f.write(response.content)
-        if os.path.getsize(path) == 0:
-            os.remove(path)
-            return
+            f.write(content)
         pbar.update(1)
 
     params = (
         ("fundcode", fund_code),
         ("pageIndex", "1"),
-        ("pageSize", "200000"),
+        ("pageSize", str(max_count)),
         ("type", "3"),
     )
 
@@ -926,14 +919,23 @@ def get_pdf_reports(fund_code: str, max_count: int = 12, save_dir: str = "pdf") 
 
     base_link = "http://pdf.dfcfw.com/pdf/H2_{}_1.pdf"
 
-    pbar = tqdm(total=min(max_count, len(json_response["Data"])))
+    with response_parsing("get_pdf_reports"):
+        data = json_response["Data"]
+        if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+            raise ResponseError("Fund report Data must be a list of records")
+        # The upstream list is newest first. A tail slice downloaded the oldest
+        # reports and contradicted max_count's documented meaning.
+        records = data[:max_count]
+        if any(not all(key in item for key in ("ID", "TITLE")) for item in records):
+            raise ResponseError("Fund report records require ID and TITLE")
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
-    for item in json_response["Data"][-max_count:]:
+    from ..batch import legacy_fetch
 
-        title = item["TITLE"]
-        download_url = base_link.format(item["ID"])
-        download_file(fund_code, download_url, title)
-    multitasking.wait_for_tasks()
-    pbar.close()
+    def download_record(index):
+        item = records[index]
+        download_file(fund_code, base_link.format(item["ID"]), item["TITLE"])
+
+    with tqdm(total=len(records)) as pbar:
+        legacy_fetch(download_record, range(len(records)))
     print(f"{fund_code} 的 pdf 文件已存储到文件夹 {save_dir}/{fund_code} 中")

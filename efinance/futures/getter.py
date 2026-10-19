@@ -1,3 +1,4 @@
+from ..validation import response_guard
 from typing import List, Union
 
 import pandas as pd
@@ -9,6 +10,7 @@ from ..common.config import FS_DICT
 from ..utils import process_dataframe_and_series
 
 
+@response_guard
 def get_futures_base_info() -> pd.DataFrame:
     """
     获取四个交易所全部期货基本信息
@@ -46,6 +48,7 @@ def get_futures_base_info() -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_quote_history(
     quote_ids: Union[str, List[str]],
     beg: str = "19000101",
@@ -156,6 +159,7 @@ def get_quote_history(
     return df
 
 
+@response_guard
 @process_dataframe_and_series(remove_columns_and_indexes=["市场编号"])
 def get_realtime_quotes() -> pd.DataFrame:
     """
@@ -196,6 +200,7 @@ def get_realtime_quotes() -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_deal_detail(quote_id: str, max_count: int = 1000000) -> pd.DataFrame:
     """
     获取期货最新交易日成交明细

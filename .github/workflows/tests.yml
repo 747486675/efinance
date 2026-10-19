@@ -1,0 +1,91 @@
+name: Offline verification
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - image: python:3.6-buster
+            constraints: -c tests/constraints-py36.txt
+          - image: python:3.9-bookworm
+            constraints: ''
+          - image: python:3.12-bookworm
+            constraints: ''
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install ${{ matrix.constraints }} '.[excel,parquet]' wheel
+      - run: python -m compileall -q efinance
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - run: python tests/offline_regression.py
+      - run: python -m pip wheel --no-deps --no-build-isolation . -w dist
+      - run: |
+          python -m venv /tmp/efinance-install
+          /tmp/efinance-install/bin/pip install ${{ matrix.constraints }} dist/*.whl
+          cd /tmp
+          /tmp/efinance-install/bin/python -c "import sys, efinance; assert 'fastapi' not in sys.modules; print(efinance.get_config())"
+          /tmp/efinance-install/bin/efinance doctor
+  web-pandas3:
+    runs-on: ubuntu-latest
+    container: python:3.12-bookworm
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install '.[web,excel,parquet]' 'pandas>=3,<4' httpx
+      - run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - run: python tests/offline_regression.py
+  browser:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        engine: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install '.[web]'
+      - run: npm install --prefix "$RUNNER_TEMP/efinance-browser" playwright@1.62.1
+      - run: "$RUNNER_TEMP/efinance-browser/node_modules/.bin/playwright install --with-deps ${{ matrix.engine }}"
+      - name: Check desktop and mobile viewports without upstream access
+        env:
+          EFINANCE_WEB_USERNAME: ''
+          EFINANCE_WEB_PASSWORD: ''
+          EFINANCE_BROWSER_ENGINE: ${{ matrix.engine }}
+        run: |
+          python -m uvicorn efinance.web:create_app --factory --host 127.0.0.1 --port 8876 > browser-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8876/api/health; then break; fi
+            sleep 1
+          done
+          export EFINANCE_PLAYWRIGHT_MODULE="$RUNNER_TEMP/efinance-browser/node_modules/playwright"
+          export EFINANCE_BROWSER_OUTPUT="$RUNNER_TEMP/browser-results"
+          node tests/web_browser.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-results-${{ matrix.engine }}
+          path: |
+            ${{ runner.temp }}/browser-results
+            browser-server.log
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f Dockerfile.web -t efinance-web:test .
+      - run: |
+          docker run -d --name efinance-web -p 127.0.0.1:8000:8000 -e EFINANCE_WEB_USERNAME=ci -e EFINANCE_WEB_PASSWORD=ci-only efinance-web:test
+          docker exec efinance-web python -I -c "import tempfile; from efinance.config import DATA_DIR; f = tempfile.TemporaryFile(dir=str(DATA_DIR)); f.write(b'cache permission check'); f.close(); print(DATA_DIR)"
+          for i in $(seq 1 30); do
+            if curl -fsS -u ci:ci-only http://127.0.0.1:8000/api/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs efinance-web
+          exit 1
+      - if: always()
+        run: docker rm -f efinance-web || true

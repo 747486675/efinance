@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>efinance · 市场数据工作台</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/plotly.min.js"></script><script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header><a class="brand" href="/">efinance<span>市场数据工作台</span></a><span class="tag">数据查询 · 0.6</span></header>
+  <main>
+    <section class="intro"><p class="eyebrow">MARKET EXPLORER</p><h1>让市场数据，清晰可见。</h1><p>查询股票、基金、可转债与期货，查看走势并导出数据。</p></section>
+    <section class="workspace">
+      <aside class="panel"><h2>查询条件</h2>
+        <form id="query-form">
+          <label for="asset">资产类型</label><select id="asset"><option value="stock">股票</option><option value="fund">基金</option><option value="bond">可转债</option><option value="futures">期货</option></select>
+          <label for="kind">数据类型</label><select id="kind"><option value="history">历史行情</option><option value="quote">最新行情</option></select>
+          <label for="codes">标的代码或名称</label><input id="codes" value="600519" required maxlength="1000" aria-describedby="code-help"><p class="help" id="code-help">多个标的用逗号分隔，最多 10 个；可输入完整行情 ID。</p>
+          <div id="dates"><div class="pair"><div><label for="beg">开始日期</label><input type="date" id="beg" value="2026-01-01"></div><div><label for="end">结束日期</label><input type="date" id="end"></div></div></div>
+          <div id="market-options" class="pair"><div><label for="klt">周期</label><select id="klt"><option value="101">日线</option><option value="102">周线</option><option value="103">月线</option><option value="1">1 分钟</option><option value="5">5 分钟</option><option value="15">15 分钟</option><option value="30">30 分钟</option><option value="60">60 分钟</option></select></div><div><label for="fqt">复权方式</label><select id="fqt"><option value="1">前复权</option><option value="0">不复权</option><option value="2">后复权</option></select></div></div>
+          <button id="submit" class="primary" type="submit">查询数据 <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="note">数据沿用上游口径。分钟线可获取范围取决于数据源，基金估值可能滞后。</p>
+      </aside>
+      <section class="results"><div class="result-head"><div><p class="eyebrow">QUERY RESULTS</p><h2>查询结果</h2></div><button id="download" disabled>下载 CSV ↓</button></div>
+        <p id="status" role="status" aria-live="polite">输入标的并查询，走势和明细将在这里呈现。</p>
+        <div id="result-content"><div class="empty"><div class="empty-icon" aria-hidden="true">▥</div><h3>从一次查询开始</h3><p>选择资产和时间范围，探索你关注的市场。</p></div></div>
+      </section>
+    </section>
+    <footer>efinance / 开源金融数据工具<span>时间和单位以接口数据口径为准</span></footer>
+  </main>
+</body></html>

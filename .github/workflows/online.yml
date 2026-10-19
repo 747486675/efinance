@@ -1,0 +1,29 @@
+name: Manual upstream checks
+on: workflow_dispatch
+jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install .
+      - id: acceptance
+        run: python tests/online_acceptance.py
+        continue-on-error: true
+      - id: regression
+        run: python tests/regression.py --connect-timeout 5 --read-timeout 10 --max-attempts 1 --report full-online-results.json > online-results.txt 2>&1
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-results
+          path: |
+            online-results.txt
+            full-online-results.json
+            docs/online-acceptance-results.json
+      - name: Preserve upstream failures in job status
+        if: always() && (steps.acceptance.outcome != 'success' || steps.regression.outcome != 'success')
+        run: exit 1

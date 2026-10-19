@@ -1,8 +1,9 @@
+from ..validation import response_guard
+from ..shared import session
+from ..exceptions import ParameterError
 from typing import Dict, List, Union
 
-import multitasking
 import pandas as pd
-import requests
 
 from ..common import get_deal_detail as get_deal_detail_for_bond
 from ..common import get_history_bill as get_history_bill_for_bond
@@ -14,6 +15,7 @@ from ..utils import get_quote_id, process_dataframe_and_series, to_numeric
 from .config import EASTMONEY_BOND_BASE_INFO_FIELDS
 
 
+@response_guard
 @to_numeric
 def get_base_info_single(bond_code: str) -> pd.Series:
     """
@@ -39,7 +41,7 @@ def get_base_info_single(bond_code: str) -> pd.Series:
     )
 
     url = "http://datacenter-web.eastmoney.com/api/data/v1/get"
-    json_response = requests.get(
+    json_response = session.get(
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params
     ).json()
     if json_response["result"] is None:
@@ -50,34 +52,15 @@ def get_base_info_single(bond_code: str) -> pd.Series:
     return s
 
 
+@response_guard
 def get_base_info_multi(bond_codes: List[str]) -> pd.DataFrame:
-    """
-    获取多只债券基本信息
-
-    Parameters
-    ----------
-    bond_codes : List[str]
-        债券代码构成的字符串列表
-
-    Returns
-    -------
-    DataFrame
-        多只债券信息
-    """
-    ss = []
-
-    @multitasking.task
-    def start(bond_code: str) -> None:
-        s = get_base_info_single(bond_code)
-        ss.append(s)
-
-    for bond_code in bond_codes:
-        start(bond_code)
-    multitasking.wait_for_tasks()
-    df = pd.DataFrame(ss)
+    from ..batch import legacy_fetch
+    rows = legacy_fetch(get_base_info_single, bond_codes)
+    df = pd.DataFrame(list(rows.values()))
     return df
 
 
+@response_guard
 def get_base_info(bond_codes: Union[str, List[str]]) -> Union[pd.DataFrame, pd.Series]:
     """
     获取单只或多只债券基本信息
@@ -128,8 +111,10 @@ def get_base_info(bond_codes: Union[str, List[str]]) -> Union[pd.DataFrame, pd.S
         return get_base_info_single(bond_codes)
     elif hasattr(bond_codes, "__iter__"):
         return get_base_info_multi(bond_codes)
+    raise ParameterError("bond_codes must be a code or an iterable of codes")
 
 
+@response_guard
 def get_all_base_info() -> pd.DataFrame:
     """
     获取全部债券基本信息列表
@@ -173,7 +158,7 @@ def get_all_base_info() -> pd.DataFrame:
         )
 
         url = "http://datacenter-web.eastmoney.com/api/data/v1/get"
-        json_response = requests.get(
+        json_response = session.get(
             url, headers=EASTMONEY_REQUEST_HEADERS, params=params
         ).json()
         if json_response["result"] is None:
@@ -187,6 +172,7 @@ def get_all_base_info() -> pd.DataFrame:
     return df
 
 
+@response_guard
 @process_dataframe_and_series(remove_columns_and_indexes=["市场编号"])
 @to_numeric
 def get_realtime_quotes(**kwargs) -> pd.DataFrame:
@@ -221,6 +207,7 @@ def get_realtime_quotes(**kwargs) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_quote_history(
     bond_codes: Union[str, List[str]],
     beg: str = "19000101",
@@ -301,6 +288,7 @@ def get_quote_history(
     return df
 
 
+@response_guard
 def get_history_bill(bond_code: str) -> pd.DataFrame:
     """
     获取单支债券的历史单子流入流出数据
@@ -327,6 +315,7 @@ def get_history_bill(bond_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_today_bill(bond_code: str) -> pd.DataFrame:
     """
     获取单只债券最新交易日的日内分钟级单子流入流出数据
@@ -365,6 +354,7 @@ def get_today_bill(bond_code: str) -> pd.DataFrame:
     return df
 
 
+@response_guard
 def get_deal_detail(bond_code: str, max_count: int = 1000000, **kwargs) -> pd.DataFrame:
     """
     获取债券最新交易日成交明细

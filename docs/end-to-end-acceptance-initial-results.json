@@ -1,0 +1,80 @@
+{
+  "checked_at": "2026-10-19T11:10:53.246190+08:00",
+  "source": "real upstream; closed history interval; no data fixtures",
+  "checks": [
+    {
+      "name": "cli.csv",
+      "status": "FAIL",
+      "error_type": "AssertionError",
+      "message": ""
+    },
+    {
+      "name": "cli.json",
+      "status": "PASS",
+      "rows": 7,
+      "bytes": 1770,
+      "overwrite_protection": "PASS"
+    },
+    {
+      "name": "cli.xlsx",
+      "status": "PASS",
+      "rows": 7,
+      "bytes": 5625,
+      "overwrite_protection": "PASS"
+    },
+    {
+      "name": "cli.parquet",
+      "status": "PASS",
+      "rows": 7,
+      "bytes": 8895,
+      "overwrite_protection": "PASS"
+    },
+    {
+      "name": "web.auth_and_health",
+      "status": "PASS"
+    },
+    {
+      "name": "web.history_equals_python",
+      "status": "PASS",
+      "rows": 7
+    },
+    {
+      "name": "web.csv_equals_python",
+      "status": "PASS",
+      "rows": 7,
+      "bytes": 910
+    }
+  ],
+  "reference": {
+    "rows": 7,
+    "columns": [
+      "股票名称",
+      "股票代码",
+      "日期",
+      "开盘",
+      "收盘",
+      "最高",
+      "最低",
+      "成交量",
+      "成交额",
+      "振幅",
+      "涨跌幅",
+      "涨跌额",
+      "换手率"
+    ],
+    "query": {
+      "asset": "stock",
+      "codes": [
+        "1.600519"
+      ],
+      "beg": "20261001",
+      "end": "20261016",
+      "klt": 101,
+      "fqt": 1
+    }
+  },
+  "summary": {
+    "PASS": 6,
+    "FAIL": 1
+  }
+}

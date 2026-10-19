@@ -1,6 +1,6 @@
-FROM continuumio/miniconda3
-# 默认工作目录
-ARG HOME=/root
-WORKDIR $HOME
-# 安装依赖
-RUN pip install efinance
+FROM python:3.12-slim
+WORKDIR /app
+COPY . .
+# Install the checked-out source instead of the unrelated published release.
+RUN pip install --no-cache-dir .
+CMD ["python"]

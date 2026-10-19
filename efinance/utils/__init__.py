@@ -1,3 +1,5 @@
+from ..validation import validate_table
+from ..exceptions import ParameterError, SymbolNotFoundError, ResponseError
 import json
 import re
 import threading
@@ -9,7 +11,7 @@ from typing import Any, Callable, Dict, List, TypeVar, Union
 
 import pandas as pd
 import rich
-from retry.api import retry
+
 
 from ..common.config import (
     FS_DICT,
@@ -44,6 +46,7 @@ def to_numeric(func: F) -> F:
     ignore = [
         "股票代码",
         "基金代码",
+        "期货代码",
         "代码",
         "市场类型",
         "市场编号",
@@ -68,7 +71,7 @@ def to_numeric(func: F) -> F:
                 if index not in ignore:
 
                     values[index] = convert(values[index])
-        return values
+        return validate_table(values)
 
     def convert(o: Union[str, int, float]) -> Union[str, float, int]:
         if not re.findall(r"\d", str(o)):
@@ -175,7 +178,7 @@ def _read_quote_index_file(allow_expired: bool = False) -> bool:
     _index_names()
     if expired:
         warnings.warn(
-            f"行情ID索引重建失败，暂继续使用已过期 {time.time() - cache.get('last_time', 0) / 86400:.1f} 天的旧索引："
+            f"行情ID索引重建失败，暂继续使用已过期 {(time.time() - cache.get('last_time', 0)) / 86400:.1f} 天的旧索引："
             "新上市或改码的标的可能解析不到，网络恢复后会自动重建。",
             RuntimeWarning,
         )
@@ -187,11 +190,15 @@ def _build_quote_index() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     from ..stock.getter import get_realtime_quotes
+    from ..transport import attempts_override, current_attempts
+
+    tries = current_attempts()
 
     def fetch(group):
         market, type_name, classify = group
         try:
-            return market, type_name, classify, get_realtime_quotes(fs=market)
+            with attempts_override(tries):
+                return market, type_name, classify, get_realtime_quotes(fs=market)
         except Exception as e:
             warnings.warn(f"获取 {market} 行情列表失败，已跳过: {e}", RuntimeWarning)
             return market, type_name, classify, None
@@ -254,10 +261,9 @@ def load_quote_index(force_reload: bool = False) -> Dict[str, List[Dict[str, str
     Dict[str, List[Dict[str, str]]]
         代码到行情ID等信息的映射，同一代码的多个候选按市场分组顺序排列
     """
-    if QUOTE_INDEX and not force_reload:
-        return QUOTE_INDEX
     with QUOTE_INDEX_LOCK:
-        # 双重检查：等锁期间可能已被其它线程建好
+        # Wait for both the code index and the name map to finish publishing.
+        # An unlocked fast path could see QUOTE_INDEX before _index_names ends.
         if QUOTE_INDEX and not force_reload:
             return QUOTE_INDEX
         if not force_reload and _read_quote_index_file():
@@ -327,7 +333,6 @@ def search_quote_from_index(
     return quotes
 
 
-@retry(tries=3, delay=1)
 def get_quote_id(
     stock_code: str,
     market_type: Union[MarketType, None] = None,
@@ -354,10 +359,10 @@ def get_quote_id(
     str
         东方财富股票专用的 secid
     """
-    if len(str(stock_code).strip()) == 0:
+    if not isinstance(stock_code, str) or not stock_code.strip():
         if suppress_error:
             return ""
-        raise Exception("证券代码应为长度不应为 0")
+        raise ParameterError("证券代码应为非空字符串")
     quote = search_quote(
         stock_code, market_type=market_type, use_local=use_local, **kwargs
     )
@@ -365,7 +370,7 @@ def get_quote_id(
         return quote.quote_id
     if quote is None:
         if not suppress_error:
-            rich.print(f'证券代码 "{stock_code}" 可能有误')
+            raise SymbolNotFoundError(f'证券代码 "{stock_code}" 可能有误')
         return ""
 
 
@@ -414,7 +419,7 @@ def search_quote(
     try:
         json_response = session.get(url, params=params).json()
         items = json_response["QuotationCodeTable"]["Data"]
-    except (ValueError, KeyError):
+    except (ValueError, KeyError, ResponseError):
         # NOTE 接口限流或改版时返回的不是 JSON，也可能是 JSON 但缺字段
         warnings.warn(
             "unable to parse search quote result, consider if you are blocked",

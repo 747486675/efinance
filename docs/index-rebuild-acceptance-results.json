@@ -1,0 +1,102 @@
+{
+  "checked_at": "2026-10-19T14:31:28.409413+08:00",
+  "isolated_temporary_cache": true,
+  "groups": [
+    {
+      "market": "可转债",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 2.062
+    },
+    {
+      "market": "港股",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 2.562
+    },
+    {
+      "market": "沪深系列指数",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 4.125
+    },
+    {
+      "market": "ETF",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 5.14
+    },
+    {
+      "market": "沪深京A股",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 5.656
+    },
+    {
+      "market": "期货",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 6.14
+    },
+    {
+      "market": "LOF",
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503",
+      "elapsed_seconds": 6.656
+    }
+  ],
+  "checks": [
+    {
+      "name": "fresh_rebuild",
+      "status": "FAIL",
+      "error_type": "Exception",
+      "message": "行情ID索引构建失败，请检查网络连接"
+    },
+    {
+      "name": "complete_rebuild_and_cache_format",
+      "status": "FAIL",
+      "error_type": "AssertionError",
+      "message": "One or more markets failed or were empty; partial data is not a complete rebuild"
+    },
+    {
+      "name": "multiple_candidates_names_and_market_filter",
+      "status": "SKIP",
+      "reason": "No rebuilt index"
+    },
+    {
+      "name": "fresh_cache_reload_without_network",
+      "status": "SKIP",
+      "reason": "No verified complete cache; no fallback used"
+    },
+    {
+      "name": "concurrent_name_lookup_after_disk_reload",
+      "status": "SKIP",
+      "reason": "No verified complete cache; no fallback used"
+    }
+  ],
+  "config": {
+    "connect_timeout": 5,
+    "read_timeout": 10,
+    "max_attempts": 2,
+    "max_concurrency": 4,
+    "requests_per_second": 2,
+    "validation": "warn"
+  },
+  "complete_market_fetch": false,
+  "codes": 0,
+  "cache_written": false,
+  "duplicate_codes": 0,
+  "original_cache_unchanged": true,
+  "summary": {
+    "PASS": 0,
+    "FAIL": 2,
+    "SKIP": 3
+  }
+}

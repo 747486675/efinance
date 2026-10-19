@@ -1,16 +1,17 @@
+from ..validation import response_guard, response_parsing
+from ..validation import history_parameters
+from ..transport import request_attempts, inherit_attempts
+from ..exceptions import ParameterError, ResponseError
 from datetime import datetime
 from typing import Dict, List, Union
 import numpy as np
-import multitasking
 import pandas as pd
-from jsonpath import jsonpath
-from retry import retry
+
 from tqdm.auto import tqdm
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from ..common.config import MARKET_NUMBER_DICT, MarketType
-from ..shared import BASE_INFO_CACHE, session, MAX_CONNECTIONS
+from ..shared import BASE_INFO_CACHE, session
 from ..utils import get_quote_id, to_numeric
 from .config import (
     EASTMONEY_BASE_INFO_FIELDS,
@@ -23,6 +24,24 @@ from .config import (
 )
 
 
+def _response_records(payload, field, record_type):
+    """Read the declared record list, without recursively masking bad envelopes."""
+    if not isinstance(payload, dict) or "data" not in payload:
+        raise ResponseError("Missing data envelope")
+    data = payload["data"]
+    if data is None:
+        return None, []
+    if not isinstance(data, dict):
+        raise TypeError("data must be an object or null")
+    if field not in data:
+        raise ResponseError("Missing {} records".format(field))
+    records = data[field]
+    if not isinstance(records, list) or any(not isinstance(row, record_type) for row in records):
+        raise TypeError("{} must be a list of {} records".format(field, record_type.__name__))
+    return data, records
+
+
+@response_guard
 @to_numeric
 def get_realtime_quotes_by_fs(fs: str, **kwargs) -> pd.DataFrame:
     """
@@ -69,44 +88,54 @@ def get_realtime_quotes_by_fs(fs: str, **kwargs) -> pd.DataFrame:
         return sort_keys
 
     json_response = get_by_page(1, pz=200)
-    total = json_response["data"]["total"]
-    pz = len(json_response["data"]["diff"])
-    div, mod = divmod(total, pz)
-    pages = div + 1 if mod else div
+    with response_parsing("get_realtime_quotes_by_fs"):
+        data = json_response["data"]
+        if data is None or (data["total"] == 0 and not data["diff"]):
+            return pd.DataFrame(columns=[v for k, v in columns.items() if k not in ("f13", "f124")] + ["行情ID", "市场类型", "更新时间"])
+        total = data["total"]
+        pz = len(data["diff"])
+        if pz == 0:
+            from ..exceptions import ResponseError
+            raise ResponseError("Nonzero total with an empty first page")
+        div, mod = divmod(total, pz)
+        pages = div + 1 if mod else div
 
-    with ThreadPoolExecutor() as executor:
-        tasks = executor.map(get_by_page, range(1, pages + 1), [pz] * pages)
-        responses = list(tasks)
+        from ..settings import get_config
+        with ThreadPoolExecutor(max_workers=get_config()["max_concurrency"]) as executor:
+            tasks = executor.map(inherit_attempts(get_by_page), range(2, pages + 1), [pz] * max(0, pages - 1))
+            responses = [json_response] + list(tasks)
 
-    dfs = [
-        pd.DataFrame(response["data"]["diff"])[list(columns.keys())]
-        for response in responses
-    ]
-    df = (
-        pd.concat(dfs, axis=0, ignore_index=True)
-        .rename(columns=columns)[columns.values()]
-        .sort_values(
-            by="涨跌幅",
-            ascending=False,
-            ignore_index=True,
-            key=mixed_sort_key,
+        dfs = [
+            pd.DataFrame(response["data"]["diff"])[list(columns.keys())]
+            for response in responses
+        ]
+        df = (
+            pd.concat(dfs, axis=0, ignore_index=True)
+            .rename(columns=columns)[columns.values()]
+            .sort_values(
+                by="涨跌幅",
+                ascending=False,
+                ignore_index=True,
+                key=mixed_sort_key,
+            )
         )
-    )
 
-    df["行情ID"] = df["市场编号"].astype(str) + "." + df["代码"].astype(str)
-    df["市场类型"] = (
-        df["市场编号"].astype(str).apply(lambda x: MARKET_NUMBER_DICT.get(x))
-    )
-    df["更新时间"] = df["更新时间戳"].apply(lambda x: str(datetime.fromtimestamp(x)))
-    df["最新交易日"] = pd.to_datetime(df["最新交易日"], format="%Y%m%d").astype(str)
-    tmp = df["最新交易日"]
-    del df["最新交易日"]
-    df["最新交易日"] = tmp
-    del df["更新时间戳"]
-    return df
+        df["行情ID"] = df["市场编号"].astype(str) + "." + df["代码"].astype(str)
+        df["市场类型"] = (
+            df["市场编号"].astype(str).apply(lambda x: MARKET_NUMBER_DICT.get(x))
+        )
+        df["更新时间"] = df["更新时间戳"].apply(lambda x: str(datetime.fromtimestamp(x)))
+        df["最新交易日"] = pd.to_datetime(df["最新交易日"], format="%Y%m%d").astype(str)
+        tmp = df["最新交易日"]
+        del df["最新交易日"]
+        df["最新交易日"] = tmp
+        del df["更新时间戳"]
+        return df
 
 
+@response_guard
 @to_numeric
+@request_attempts
 def get_quote_history_single(
     code: str,
     beg: str = "19000101",
@@ -123,6 +152,7 @@ def get_quote_history_single(
 
     """
 
+    history_parameters(code, beg, end, klt, fqt)
     fields = list(EASTMONEY_KLINE_FIELDS.keys())
     columns = list(EASTMONEY_KLINE_FIELDS.values())
     fields2 = ",".join(fields)
@@ -152,74 +182,42 @@ def get_quote_history_single(
     json_response = session.get(
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params, verify=False
     ).json()
-    klines: List[str] = jsonpath(json_response, "$..klines[:]")
-    if not klines:
-        columns.insert(0, "代码")
-        columns.insert(0, "名称")
-        return pd.DataFrame(columns=columns)
+    with response_parsing("get_quote_history_single"):
+        data, klines = _response_records(json_response, "klines", str)
+        if not klines:
+            columns.insert(0, "代码")
+            columns.insert(0, "名称")
+            return pd.DataFrame(columns=columns)
 
-    rows = [kline.split(",") for kline in klines]
-    name = json_response["data"]["name"]
-    code = quote_id.split(".")[-1]
-    df = pd.DataFrame(rows, columns=columns)
-    df.insert(0, "代码", code)
-    df.insert(0, "名称", name)
+        rows = [kline.split(",") for kline in klines]
+        name = data["name"]
+        code = quote_id.split(".")[-1]
+        df = pd.DataFrame(rows, columns=columns)
+        df.insert(0, "代码", code)
+        df.insert(0, "名称", name)
 
-    return df
+        return df
 
 
+@response_guard
 def get_quote_history_multi(
-    codes: List[str],
-    beg: str = "19000101",
-    end: str = "20500101",
-    klt: int = 101,
-    fqt: int = 1,
-    tries: int = 3,
-    market_type: Union[MarketType, None] = None,
-    suppress_error: bool = False,
-    use_id_cache: bool = True,
-    **kwargs,
+    codes: List[str], beg: str = "19000101", end: str = "20500101",
+    klt: int = 101, fqt: int = 1, tries: int = 3,
+    market_type: Union[MarketType, None] = None, suppress_error: bool = False,
+    use_id_cache: bool = True, **kwargs,
 ) -> Dict[str, pd.DataFrame]:
-    """
-    获取多只股票、债券历史行情信息
-
-    """
-
-    dfs: Dict[str, pd.DataFrame] = {}
-    total = len(codes)
-
-    @multitasking.task
-    @retry(tries=tries, delay=1)
-    def start(code: str):
-        _df = get_quote_history_single(
-            code,
-            beg=beg,
-            end=end,
-            klt=klt,
-            fqt=fqt,
-            market_type=market_type,
-            suppress_error=suppress_error,
-            use_id_cache=use_id_cache,
-            **kwargs,
-        )
-        dfs[code] = _df
-        pbar.update(1)
-        pbar.set_description_str(f"Processing => {code}")
-
-    pbar = tqdm(total=total)
-    for code in codes:
-        if len(multitasking.get_active_tasks()) > MAX_CONNECTIONS:
-            time.sleep(3)
-        start(code)
-
-    multitasking.wait_for_tasks()
-    pbar.close()
-
+    """Fetch an ordered bounded batch; failures expose partial results."""
+    from ..batch import legacy_fetch
+    dfs = legacy_fetch(get_quote_history_single, codes, tries=tries,
+        kwargs=dict(beg=beg, end=end, klt=klt, fqt=fqt,
+                    market_type=market_type, suppress_error=suppress_error,
+                    use_id_cache=use_id_cache, **kwargs))
     if kwargs.get(MagicConfig.RETURN_DF):
-        return pd.concat(dfs, axis=0, ignore_index=True)
-    return dfs
+        return pd.concat(dfs, axis=0, ignore_index=True) if dfs else pd.DataFrame()
+    return dict(dfs)
 
 
+@response_guard
 def get_quote_history(
     codes: Union[str, List[str]],
     beg: str = "19000101",
@@ -310,9 +308,10 @@ def get_quote_history(
             use_id_cache=use_id_cache,
             **kwargs,
         )
-    raise TypeError("代码数据类型输入不正确！")
+    raise ParameterError("代码数据类型输入不正确！")
 
 
+@response_guard
 @to_numeric
 def get_history_bill(code: str) -> pd.DataFrame:
     """
@@ -346,21 +345,23 @@ def get_history_bill(code: str) -> pd.DataFrame:
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params
     ).json()
 
-    klines: List[str] = jsonpath(json_response, "$..klines[:]")
-    if not klines:
-        columns.insert(0, "代码")
-        columns.insert(0, "名称")
-        return pd.DataFrame(columns=columns)
-    rows = [kline.split(",") for kline in klines]
-    name = jsonpath(json_response, "$..name")[0]
-    code = quote_id.split(".")[-1]
-    df = pd.DataFrame(rows, columns=columns)
-    df.insert(0, "代码", code)
-    df.insert(0, "名称", name)
+    with response_parsing("get_history_bill"):
+        data, klines = _response_records(json_response, "klines", str)
+        if not klines:
+            columns.insert(0, "代码")
+            columns.insert(0, "名称")
+            return pd.DataFrame(columns=columns)
+        rows = [kline.split(",") for kline in klines]
+        name = data["name"]
+        code = quote_id.split(".")[-1]
+        df = pd.DataFrame(rows, columns=columns)
+        df.insert(0, "代码", code)
+        df.insert(0, "名称", name)
 
-    return df
+        return df
 
 
+@response_guard
 @to_numeric
 def get_today_bill(code: str) -> pd.DataFrame:
     """
@@ -389,28 +390,30 @@ def get_today_bill(code: str) -> pd.DataFrame:
     json_response = session.get(
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params
     ).json()
-    columns = [
-        "时间",
-        "主力净流入",
-        "小单净流入",
-        "中单净流入",
-        "大单净流入",
-        "超大单净流入",
-    ]
-    name = jsonpath(json_response, "$..name")[0]
-    code = quote_id.split(".")[-1]
-    klines: List[str] = jsonpath(json_response, "$..klines[:]")
-    if not klines:
-        columns.insert(0, "代码")
-        columns.insert(0, "名称")
-        return pd.DataFrame(columns=columns)
-    rows = [kline.split(",") for kline in klines]
-    df = pd.DataFrame(rows, columns=columns)
-    df.insert(0, "代码", code)
-    df.insert(0, "名称", name)
-    return df
+    with response_parsing("get_today_bill"):
+        columns = [
+            "时间",
+            "主力净流入",
+            "小单净流入",
+            "中单净流入",
+            "大单净流入",
+            "超大单净流入",
+        ]
+        data, klines = _response_records(json_response, "klines", str)
+        if not klines:
+            columns.insert(0, "代码")
+            columns.insert(0, "名称")
+            return pd.DataFrame(columns=columns)
+        name = data["name"]
+        code = quote_id.split(".")[-1]
+        rows = [kline.split(",") for kline in klines]
+        df = pd.DataFrame(rows, columns=columns)
+        df.insert(0, "代码", code)
+        df.insert(0, "名称", name)
+        return df
 
 
+@response_guard
 @to_numeric
 def get_base_info(quote_id: str) -> pd.Series:
 
@@ -426,14 +429,17 @@ def get_base_info(quote_id: str) -> pd.Series:
     json_response = session.get(
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params
     ).json()
-    items = json_response["data"]
-    if not items:
-        return pd.Series(index=EASTMONEY_BASE_INFO_FIELDS.values(), dtype="object")
+    with response_parsing("get_base_info"):
+        items = json_response["data"]
+        if not items:
+            return pd.Series(index=EASTMONEY_BASE_INFO_FIELDS.values(), dtype="object")
 
-    s = pd.Series(items, dtype="object").rename(index=EASTMONEY_BASE_INFO_FIELDS)
-    return s
+        s = pd.Series(items, dtype="object").rename(index=EASTMONEY_BASE_INFO_FIELDS)
+        from ..validation import validate_table
+        return validate_table(s, required=("代码", "名称"))
 
 
+@response_guard
 @to_numeric
 def get_deal_detail(quote_id: str, max_count: int = 1000000) -> pd.DataFrame:
     """
@@ -455,8 +461,11 @@ def get_deal_detail(quote_id: str, max_count: int = 1000000) -> pd.DataFrame:
     ------
     返回的数据表头: ``['名称', '代码', '时间', '昨收', '成交价', '成交量', '单数']``
     """
-    base_info = BASE_INFO_CACHE.get(quote_id, get_base_info(quote_id))
-    BASE_INFO_CACHE[quote_id] = base_info
+    if quote_id in BASE_INFO_CACHE:
+        base_info = BASE_INFO_CACHE[quote_id]
+    else:
+        base_info = get_base_info(quote_id)
+        BASE_INFO_CACHE[quote_id] = base_info
     columns = ["名称", "代码", "时间", "昨收", "成交价", "成交量", "单数"]
     if str(base_info["代码"]).lower() == "nan":
         return pd.DataFrame(columns=columns)
@@ -470,21 +479,24 @@ def get_deal_detail(quote_id: str, max_count: int = 1000000) -> pd.DataFrame:
     )
 
     response = session.get(
-        "https://push2.eastmoney.com/api/qt/stock/details/get", params=params
+        "https://push2.eastmoney.com/api/qt/stock/details/get",
+        headers=EASTMONEY_REQUEST_HEADERS, params=params
     )
 
-    js: dict = response.json()
-    lines: List[str] = js["data"]["details"]
-    rows = [line.split(",")[:4] for line in lines]
-    df = pd.DataFrame(columns=columns, index=range(len(rows)))
-    df.loc[:, "代码"] = code
-    df.loc[:, "名称"] = name
-    detail_df = pd.DataFrame(rows, columns=["时间", "成交价", "成交量", "单数"])
-    detail_df.insert(1, "昨收", js["data"]["prePrice"])
-    df.loc[:, detail_df.columns] = detail_df.values
-    return df
+    with response_parsing("get_deal_detail"):
+        js: dict = response.json()
+        lines: List[str] = js["data"]["details"]
+        rows = [line.split(",")[:4] for line in lines]
+        df = pd.DataFrame(columns=columns, index=range(len(rows)))
+        df.loc[:, "代码"] = code
+        df.loc[:, "名称"] = name
+        detail_df = pd.DataFrame(rows, columns=["时间", "成交价", "成交量", "单数"])
+        detail_df.insert(1, "昨收", js["data"]["prePrice"])
+        df.loc[:, detail_df.columns] = detail_df.values
+        return df
 
 
+@response_guard
 @to_numeric
 def get_latest_quote(quote_id_list: Union[str, List[str]], **kwargs) -> pd.DataFrame:
     """
@@ -529,23 +541,25 @@ def get_latest_quote(quote_id_list: Union[str, List[str]], **kwargs) -> pd.DataF
     json_response = session.get(
         url, headers=EASTMONEY_REQUEST_HEADERS, params=params
     ).json()
-    rows = jsonpath(json_response, "$..diff[:]")
-    if not rows:
-        df = pd.DataFrame(columns=columns.values())
-    else:
-        df = pd.DataFrame(rows)[list(columns.keys())].rename(columns=columns)
-    df["市场类型"] = df["市场编号"].apply(lambda x: MARKET_NUMBER_DICT.get(str(x)))
-    df["行情ID"] = df["市场编号"].astype(str) + "." + df["代码"].astype(str)
-    del df["市场编号"]
-    df["更新时间"] = df["更新时间戳"].apply(lambda x: str(datetime.fromtimestamp(x)))
-    df["最新交易日"] = pd.to_datetime(df["最新交易日"], format="%Y%m%d").astype(str)
-    tmp = df["最新交易日"]
-    del df["最新交易日"]
-    df["最新交易日"] = tmp
-    del df["更新时间戳"]
-    return df
+    with response_parsing("get_latest_quote"):
+        _, rows = _response_records(json_response, "diff", dict)
+        if not rows:
+            df = pd.DataFrame(columns=columns.values())
+        else:
+            df = pd.DataFrame(rows)[list(columns.keys())].rename(columns=columns)
+        df["市场类型"] = df["市场编号"].apply(lambda x: MARKET_NUMBER_DICT.get(str(x)))
+        df["行情ID"] = df["市场编号"].astype(str) + "." + df["代码"].astype(str)
+        del df["市场编号"]
+        df["更新时间"] = df["更新时间戳"].apply(lambda x: str(datetime.fromtimestamp(x)))
+        df["最新交易日"] = pd.to_datetime(df["最新交易日"], format="%Y%m%d").astype(str)
+        tmp = df["最新交易日"]
+        del df["最新交易日"]
+        df["最新交易日"] = tmp
+        del df["更新时间戳"]
+        return df
 
 
+@response_guard
 @to_numeric
 def get_latest_ndays_quote(code: str, ndays: int = 1, **kwargs) -> pd.DataFrame:
     """
@@ -584,17 +598,18 @@ def get_latest_ndays_quote(code: str, ndays: int = 1, **kwargs) -> pd.DataFrame:
         "http://push2his.eastmoney.com/api/qt/stock/trends2/get", params=params
     ).json()
 
-    klines: List[str] = jsonpath(json_response, "$..trends[:]")
-    if not klines:
-        columns.insert(0, "代码")
-        columns.insert(0, "名称")
-        return pd.DataFrame(columns=columns)
+    with response_parsing("get_latest_ndays_quote"):
+        data, klines = _response_records(json_response, "trends", str)
+        if not klines:
+            columns.insert(0, "代码")
+            columns.insert(0, "名称")
+            return pd.DataFrame(columns=columns)
 
-    rows = [kline.split(",") for kline in klines]
-    name = json_response["data"]["name"]
-    code = quote_id.split(".")[-1]
-    df = pd.DataFrame(rows, columns=columns)
-    df.insert(0, "代码", code)
-    df.insert(0, "名称", name)
+        rows = [kline.split(",") for kline in klines]
+        name = data["name"]
+        code = quote_id.split(".")[-1]
+        df = pd.DataFrame(rows, columns=columns)
+        df.insert(0, "代码", code)
+        df.insert(0, "名称", name)
 
-    return df
+        return df

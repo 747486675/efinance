@@ -1,0 +1,100 @@
+{
+  "checked_at": "2026-10-19T14:32:25.185624+08:00",
+  "checks": [
+    {
+      "endpoint": "market",
+      "page_size": 2,
+      "full_fields": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "market",
+      "page_size": 2,
+      "full_fields": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "market",
+      "page_size": 100,
+      "full_fields": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "market",
+      "page_size": 100,
+      "full_fields": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "market",
+      "page_size": 200,
+      "full_fields": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "market",
+      "page_size": 200,
+      "full_fields": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "Upstream HTTP 503"
+    },
+    {
+      "endpoint": "details",
+      "max_count": 1,
+      "browser_headers": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-1 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    },
+    {
+      "endpoint": "details",
+      "max_count": 1,
+      "browser_headers": true,
+      "status": "PASS",
+      "rows": 1
+    },
+    {
+      "endpoint": "details",
+      "max_count": 10,
+      "browser_headers": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-10 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    },
+    {
+      "endpoint": "details",
+      "max_count": 10,
+      "browser_headers": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-10 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    },
+    {
+      "endpoint": "details",
+      "max_count": 30,
+      "browser_headers": false,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-30 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    },
+    {
+      "endpoint": "details",
+      "max_count": 30,
+      "browser_headers": true,
+      "status": "FAIL",
+      "error_type": "NetworkError",
+      "message": "HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/details/get?secid=1.600519&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55&pos=-30 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))"
+    }
+  ]
+}

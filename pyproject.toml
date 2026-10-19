@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "efinance"
-version = "0.5.8"
+version = "0.6.0"
+requires-python = ">=3.6"
 description = "A finance tool to get stock,fund and futures data base on eastmoney"
 readme = "README.md"
 authors = [{ name = "micro sheep", email = "micro-sheep@outlook.com" }]
@@ -22,6 +23,14 @@ classifiers = [
 keywords = ["finance", "quant", "stock", "fund", "futures"]
 dynamic = ["dependencies"]
 
+[project.scripts]
+efinance = "efinance.cli:main"
+
+[project.optional-dependencies]
+excel = ["openpyxl>=3.0"]
+parquet = ["pyarrow>=3.0"]
+web = ["fastapi>=0.115,<1; python_version >= '3.12'", "uvicorn>=0.30,<1; python_version >= '3.12'", "plotly>=5.24,<7; python_version >= '3.12'"]
+
 [project.urls]
 Homepage = "https://github.com/Micro-sheep/efinance"
 Documentation = "https://efinance.readthedocs.io"
@@ -32,3 +41,6 @@ packages = { find = { where = ["."], include = ["efinance*"] } }
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.package-data]
+efinance = ["web/static/*"]

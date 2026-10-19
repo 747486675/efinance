@@ -1,0 +1,5 @@
+include requirements.txt
+include changelog.md Dockerfile Dockerfile.web compose.web.yaml
+recursive-include docs *.md *.json *.png
+recursive-include tests *.py *.txt *.cjs
+recursive-include efinance/web/static *

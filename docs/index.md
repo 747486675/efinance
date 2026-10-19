@@ -16,6 +16,8 @@
    install
    example
    usage
+   upgrade-guide
+   web-deployment
 
 ----
 

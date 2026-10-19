@@ -5,6 +5,7 @@ import requests
 from rich.console import Console
 
 from ..config import SHOW_TICKFLOW_PROMPT
+from ..transport import FinanceSession
 
 TICKFLOW_URL = "https://tickflow.org?utm_source=efinance"
 
@@ -94,15 +95,8 @@ def _install_ipython_exc():
     ip.events.register("post_execute", post_execute)
 
 
-class CustomedSession(requests.Session):
-    def request(self, *args, **kwargs):
-        kwargs.setdefault("timeout", 180)
-        try:
-            return super(CustomedSession, self).request(*args, **kwargs)
-        except requests.exceptions.ConnectionError as e:
-            if SHOW_TICKFLOW_PROMPT and is_connection_error_show_tickflow(e):
-                _tickflow_after_traceback.show = True
-            raise
+class CustomedSession(FinanceSession):
+    pass
 
 
 session = CustomedSession()

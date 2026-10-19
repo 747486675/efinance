@@ -1,7 +1,7 @@
 """行情ID解析与历史行情接口的回归检查。
 
     python tests/regression.py              # 全量，需要联网
-    python tests/regression.py --offline    # 只跑 6 项免网检查
+    python tests/regression.py --offline    # 只跑 10 项免网检查
 
 全量用例会读取实时行情表以获得在用的转债、期货和基金代码，
 因此不依赖任何可能退市的具体标的。上游按 IP 限流时先跑 ``--offline``：
@@ -14,12 +14,15 @@
 - ``fund.get_pdf_reports``：会向磁盘下载 PDF，有副作用
 """
 
+import argparse
 import json
+from datetime import datetime, timedelta, timezone
 import sys
 import time
 from pathlib import Path
 from tempfile import mkdtemp
 from threading import Thread
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -36,29 +39,33 @@ class Checker:
         # 依赖项失败导致未执行的检查：不能算通过，否则断网时会给出假绿灯
         self.skipped = []
         self.passed = 0
+        self.records = []
 
     def rows(self, name, function, min_rows=1):
         try:
             value = function()
         except Exception as e:
-            self._fail(name, f"{type(e).__name__}: {e}")
+            self._fail(name, f"{type(e).__name__}: {e}", error_type=type(e).__name__)
             return None
         count = len(value) if hasattr(value, "__len__") else 0
         if count >= min_rows:
             self.passed += 1
+            self.records.append(dict(name=name, status="PASS", rows=count))
             print(f"PASS  {name}: {count}")
         else:
             self._fail(name, f"返回 {count} 行，期望 >= {min_rows}")
+            return None
         return value
 
     def equals(self, name, function, expected):
         try:
             value = function()
         except Exception as e:
-            self._fail(name, f"{type(e).__name__}: {e}")
+            self._fail(name, f"{type(e).__name__}: {e}", error_type=type(e).__name__)
             return None
         if value == expected:
             self.passed += 1
+            self.records.append(dict(name=name, status="PASS", detail=repr(value)))
             print(f"PASS  {name}: {value!r}")
         else:
             self._fail(name, f"得到 {value!r}，期望 {expected!r}")
@@ -67,14 +74,17 @@ class Checker:
     def skip(self, name, reason):
         """前置依赖失败，本项未执行"""
         self.skipped.append(name)
+        self.records.append(dict(name=name, status="SKIP", reason=reason))
         print(f"SKIP  {name}: {reason}")
 
     def not_applicable(self, name, reason):
         """按设计可缺省的检查，不计入失败也不阻止绿灯"""
+        self.records.append(dict(name=name, status="N/A", reason=reason))
         print(f"N/A   {name}: {reason}")
 
-    def _fail(self, name, detail):
+    def _fail(self, name, detail, error_type=None):
         self.failures.append(name)
+        self.records.append(dict(name=name, status="FAIL", detail=detail, error_type=error_type))
         print(f"FAIL  {name}: {detail}")
         return None
 
@@ -290,12 +300,19 @@ def run_offline_checks(c: "Checker") -> None:
         check(c)
 
 
-def finish(c: "Checker") -> int:
+def finish(c: "Checker", report_path=None) -> int:
     print(f"\n通过 {c.passed} 项，失败 {len(c.failures)} 项，跳过 {len(c.skipped)} 项")
     if c.failures:
         print(f"失败明细：{c.failures}")
     if c.skipped:
         print(f"未执行明细：{c.skipped}")
+    if report_path is not None:
+        report_path = Path(report_path)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report = dict(checked_at=datetime.now(timezone(timedelta(hours=8))).isoformat(),
+                      config=ef.get_config(), checks=c.records,
+                      summary=dict(passed=c.passed, failed=len(c.failures), skipped=len(c.skipped)))
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     # 跳过同样不算通过，否则接口不通时会给出假绿灯
     return 1 if (c.failures or c.skipped) else 0
 
@@ -306,12 +323,23 @@ def main() -> int:
     except Exception:
         pass
 
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--report", type=Path, help="Save structured results, including failures and skips")
+    parser.add_argument("--connect-timeout", type=float)
+    parser.add_argument("--read-timeout", type=float)
+    parser.add_argument("--max-attempts", type=int)
+    args = parser.parse_args()
+    options = {key: value for key, value in dict(connect_timeout=args.connect_timeout,
+               read_timeout=args.read_timeout, max_attempts=args.max_attempts).items() if value is not None}
+    if options:
+        ef.configure(**options)
     c = Checker()
 
     # NOTE 上游限流期间唯一可跑的验证路径：断网也能给出真实的代码健康度
-    if "--offline" in sys.argv:
+    if args.offline:
         run_offline_checks(c)
-        return finish(c)
+        return finish(c, args.report)
 
     print("\n=== 代码与名称解析 ===")
     index = c.rows("索引可构建", utils.load_quote_index, min_rows=10000)
@@ -494,17 +522,19 @@ def main() -> int:
     )
     c.rows("bond.get_all_base_info", lambda: ef.bond.get_all_base_info(), 100)
 
-    print("\n=== 降级行为 ===")
-    # 美股未纳入索引，绕过索引走远端搜索接口时必须返回空串而不是抛异常
-    c.equals(
-        "use_local=False 时降级为空串",
-        lambda: utils.get_quote_id("AAPL", use_local=False),
-        "",
-    )
+    print("\n=== 离线降级行为（固定无匹配结果） ===")
+    # The default now raises SymbolNotFoundError. Only the documented optional
+    # suppression returns an empty string; upstream availability is irrelevant.
+    with patch.object(utils, "search_quote", return_value=None):
+        c.equals(
+            "suppress_error=True 时无匹配结果返回空串（离线）",
+            lambda: utils.get_quote_id("AAPL", use_local=False, suppress_error=True),
+            "",
+        )
 
     run_offline_checks(c)
 
-    return finish(c)
+    return finish(c, args.report)
 
 
 if __name__ == "__main__":
