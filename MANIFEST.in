@@ -2,6 +2,7 @@ include requirements.txt
 include changelog.md Dockerfile Dockerfile.web compose.web.yaml
 recursive-include docs *.md
 recursive-exclude docs *-results.json
+recursive-exclude docs *-diagnostics.json
 recursive-exclude docs/images query-*.png
 prune docs/webkit-validation
 recursive-include tests *.py *.txt *.cjs

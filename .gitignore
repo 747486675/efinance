@@ -166,6 +166,7 @@ efinance/data
 
 # Generated acceptance reports and browser screenshots (kept locally)
 /docs/*-results.json
+/docs/*-diagnostics.json
 /docs/images/query-*.png
 /docs/webkit-validation/
 /full-online-results.json

@@ -11,6 +11,7 @@ build
 efinance/data
 docs/build
 docs/*-results.json
+docs/*-diagnostics.json
 docs/images/query-*.png
 docs/webkit-validation
 full-online-results.json
